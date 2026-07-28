@@ -1,5 +1,4 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const qrcodeTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode');
 const pino = require('pino');
 const express = require('express');
@@ -7,41 +6,46 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-let qrCodeData = '';
+let latestQrImage = '';
+let isConnected = false;
 
-// Rota para exibir o QR Code em formato de imagem na Web
-app.get('/qr', async (req, res) => {
-    if (!qrCodeData) {
+// Página do QR Code
+app.get('/qr', (req, res) => {
+    if (isConnected) {
         return res.send(`
-            <html>
-                <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;color:#fff;font-family:sans-serif;flex-direction:column;">
-                    <h2>QR Code ainda não gerado ou o WhatsApp já está conectado!</h2>
-                    <p>Atualize a página em alguns segundos se acabou de reiniciar.</p>
-                </body>
+            <html style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding-top:50px;">
+                <h2>✅ WhatsApp já está conectado!</h2>
+                <p>O bot está rodando e pronto para responder.</p>
             </html>
         `);
     }
-    try {
-        const url = await QRCode.toDataURL(qrCodeData);
-        res.send(`
-            <html>
-                <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;color:#fff;font-family:sans-serif;flex-direction:column;">
-                    <h2>Escaneie o QR Code abaixo no seu WhatsApp:</h2>
-                    <img src="${url}" style="width:300px;height:300px;border:10px solid white;border-radius:10px;margin-top:20px;"/>
-                </body>
+
+    if (!latestQrImage) {
+        return res.send(`
+            <html style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding-top:50px;">
+                <h2>⏳ Gerando QR Code...</h2>
+                <p>Aguarde 10 segundos e <a href="/qr" style="color:#00ff88;">clique aqui para atualizar</a>.</p>
+                <script>setTimeout(() => { location.reload(); }, 5000);</script>
             </html>
         `);
-    } catch (err) {
-        res.status(500).send('Erro ao gerar imagem do QR Code');
     }
+
+    res.send(`
+        <html style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding-top:30px;">
+            <h2>Escaneie o QR Code abaixo:</h2>
+            <img src="${latestQrImage}" style="width:300px;height:300px;border:8px solid white;border-radius:12px;margin:20px;" />
+            <p style="color:#aaa;">Esta página atualiza automaticamente.</p>
+            <script>setTimeout(() => { location.reload(); }, 15000);</script>
+        </html>
+    `);
 });
 
 app.get('/', (req, res) => {
-    res.send('Bot de WhatsApp rodando com sucesso! Acesse /qr para ver o QR Code.');
+    res.send('Bot Online! Acesse <a href="/qr">/qr</a> para conectar.');
 });
 
 app.listen(PORT, () => {
-    console.log(`Servidor HTTP rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
 
 async function connectToWhatsApp() {
@@ -58,26 +62,29 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            qrCodeData = qr;
-            console.log('\n--- QR CODE GERADO! Acesse a URL do Render com /qr no final para escanear ---\n');
-            qrcodeTerminal.generate(qr, { small: true });
+            isConnected = false;
+            // Converte o QR Code para imagem Base64 na hora
+            latestQrImage = await QRCode.toDataURL(qr);
+            console.log('⚡ NOVO QR CODE GERADO E PRONTO NO SITE!');
         }
 
         if (connection === 'close') {
-            qrCodeData = '';
+            isConnected = false;
+            latestQrImage = '';
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            console.log(`Conexão fechada. Reconectando em 5 segundos...`);
+            console.log(`Conexão fechada. Reconectando em 5s...`);
             if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 5000);
             }
         } else if (connection === 'open') {
-            qrCodeData = '';
+            isConnected = true;
+            latestQrImage = '';
             console.log('✅ Bot conectado ao WhatsApp com sucesso!');
         }
     });
