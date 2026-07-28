@@ -1,0 +1,8 @@
+[providers]
+providers = ["python"]
+
+[phases.setup]
+nixPkgs = ["python311"]
+
+[start]
+cmd = "python3 bot_novo_v2.py"
