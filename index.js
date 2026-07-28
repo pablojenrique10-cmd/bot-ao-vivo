@@ -9,13 +9,13 @@ const PORT = process.env.PORT || 3000;
 let latestQrImage = '';
 let isConnected = false;
 
-// Página do QR Code
+// Página Web para exibir o QR Code
 app.get('/qr', (req, res) => {
     if (isConnected) {
         return res.send(`
             <html style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding-top:50px;">
                 <h2>✅ WhatsApp já está conectado!</h2>
-                <p>O bot está rodando e pronto para responder.</p>
+                <p>O bot está ativo e pronto para responder.</p>
             </html>
         `);
     }
@@ -24,7 +24,7 @@ app.get('/qr', (req, res) => {
         return res.send(`
             <html style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding-top:50px;">
                 <h2>⏳ Gerando QR Code...</h2>
-                <p>Aguarde 10 segundos e <a href="/qr" style="color:#00ff88;">clique aqui para atualizar</a>.</p>
+                <p>Aguarde alguns segundos e <a href="/qr" style="color:#00ff88;">clique aqui para atualizar</a>.</p>
                 <script>setTimeout(() => { location.reload(); }, 5000);</script>
             </html>
         `);
@@ -32,7 +32,7 @@ app.get('/qr', (req, res) => {
 
     res.send(`
         <html style="background:#111;color:#fff;font-family:sans-serif;text-align:center;padding-top:30px;">
-            <h2>Escaneie o QR Code abaixo:</h2>
+            <h2>Escaneie o QR Code abaixo com seu WhatsApp:</h2>
             <img src="${latestQrImage}" style="width:300px;height:300px;border:8px solid white;border-radius:12px;margin:20px;" />
             <p style="color:#aaa;">Esta página atualiza automaticamente.</p>
             <script>setTimeout(() => { location.reload(); }, 15000);</script>
@@ -41,11 +41,11 @@ app.get('/qr', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send('Bot Online! Acesse <a href="/qr">/qr</a> para conectar.');
+    res.send('Bot Online! Acesse <a href="/qr">/qr</a> para conectar ou checar status.');
 });
 
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor Web rodando na porta ${PORT}`);
 });
 
 async function connectToWhatsApp() {
@@ -67,9 +67,8 @@ async function connectToWhatsApp() {
 
         if (qr) {
             isConnected = false;
-            // Converte o QR Code para imagem Base64 na hora
             latestQrImage = await QRCode.toDataURL(qr);
-            console.log('⚡ NOVO QR CODE GERADO E PRONTO NO SITE!');
+            console.log('⚡ NOVO QR CODE GERADO! Acesse /qr para escanear.');
         }
 
         if (connection === 'close') {
@@ -78,7 +77,7 @@ async function connectToWhatsApp() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            console.log(`Conexão fechada. Reconectando em 5s...`);
+            console.log(`Conexão fechada. Reconectando em 5 segundos...`);
             if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 5000);
             }
@@ -91,15 +90,28 @@ async function connectToWhatsApp() {
 
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+        if (!msg.message) return;
 
         const from = msg.key.remoteJid;
-        const body = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        
+        // Pega o texto da mensagem independente do tipo (texto simples ou resposta estendida)
+        const body = msg.message.conversation || 
+                     msg.message.extendedTextMessage?.text || 
+                     msg.message.buttonsResponseMessage?.selectedButtonId || '';
+        
         const texto = body.toLowerCase().trim();
 
-        if (['oi', 'ola', 'olá', 'menu'].includes(texto)) {
+        // Exibe no console toda mensagem que chega para acompanhamento nos Logs do Render
+        console.log(`📩 Mensagem de ${from}: "${body}" (Mensagem própria: ${msg.key.fromMe})`);
+
+        // Ignora se for o próprio bot enviando mensagem
+        if (msg.key.fromMe) return;
+
+        // Responde se contiver oi, ola, olá ou menu
+        if (['oi', 'ola', 'olá', 'menu'].includes(texto) || texto.includes('oi') || texto.includes('menu')) {
             const menu = `📺 *MENU PHZIN TV*\n\nOlá! Seja bem-vindo(a). 😊\nEscolha uma das opções:\n\n1️⃣ Ver planos\n2️⃣ Solicitar teste grátis\n3️⃣ Comprar assinatura\n6️⃣ Falar com atendente`;
             await sock.sendMessage(from, { text: menu });
+            console.log(`✅ Menu enviado para ${from}`);
         }
     });
 }
