@@ -1,12 +1,23 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
+const express = require('express');
 
+// Cria servidor Web simples para o Render não cancelar o Deploy
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('Bot de WhatsApp está rodando!');
+});
+
+app.listen(PORT, () => {
+    console.log(`Servidor HTTP rodando na porta ${PORT}`);
+});
+
+// Lógica do WhatsApp
 async function connectToWhatsApp() {
-    // Busca a versão mais recente suportada pelo WhatsApp
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`Usando a versão v${version.join('.')}, é a mais recente: ${isLatest}`);
-
+    const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     const sock = makeWASocket({
@@ -14,7 +25,7 @@ async function connectToWhatsApp() {
         auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        browser: ['Render', 'Chrome', '1.0.0']
+        browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -22,7 +33,6 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        // Se gerou QR Code, exibe nos logs
         if (qr) {
             console.log('\n======================================================');
             console.log('       ESCANEIE O QR CODE ABAIXO NO SEU WHATSAPP       ');
@@ -34,9 +44,8 @@ async function connectToWhatsApp() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            console.log(`Conexão fechada (Código: ${statusCode}). Reconectando em 5s: ${shouldReconnect}`);
+            console.log(`Conexão fechada. Reconectando em 5 segundos...`);
 
-            // Espera 5 segundos antes de tentar de novo para evitar o loop infinito
             if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 5000);
             }
